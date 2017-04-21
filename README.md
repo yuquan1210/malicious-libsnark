@@ -627,3 +627,4 @@ References
 [LICENSE]: LICENSE (LICENSE file in top directory of libsnark distribution)
 
 [AUTHORS]: AUTHORS (AUTHORS file in top directory of libsnark distribution)
+# libsnarkattack
