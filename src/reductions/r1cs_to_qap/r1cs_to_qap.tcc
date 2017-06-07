@@ -173,6 +173,56 @@ qap_instance_evaluation<FieldT> r1cs_to_qap_instance_map_with_evaluation(const r
                                            Zt);
 }
 
+template<typename FieldT>
+qap_instance_evaluation<FieldT> malicious_r1cs_to_qap_instance_map_with_evaluation(const r1cs_constraint_system<FieldT> &cs,
+																																									 const FieldT &t)
+{
+    enter_block("Call to malicious_r1cs_to_qap_instance_map_with_evaluation");
+
+    const std::shared_ptr<evaluation_domain<FieldT> > domain = get_evaluation_domain<FieldT>(cs.num_constraints() + cs.num_inputs() + 1);
+
+    std::vector<FieldT> At, Bt, Ct, Ht;
+
+		// All zeros except for the attacked wire
+    At.resize(cs.num_variables()+1, FieldT::zero());
+    Bt.resize(cs.num_variables()+1, FieldT::zero());
+    Ct.resize(cs.num_variables()+1, FieldT::zero());
+    Ht.reserve(domain->m+1);
+    
+    // We account for the off-by-one when building vector c
+    Bt[attacked_wire()+1] = FieldT::one();
+
+    const FieldT Zt = domain->compute_Z(t);
+
+    enter_block("Compute evaluations of A, B, C, H at t");
+  
+
+		// We make sure this is all zero
+    FieldT ti = FieldT::zero();
+    for (size_t i = 0; i < domain->m+1; ++i)
+    {
+        Ht.emplace_back(ti);
+        ti *= t;
+    }
+    leave_block("Compute evaluations of A, B, C, H at t");
+
+    leave_block("Call to malicious_r1cs_to_qap_instance_map_with_evaluation");
+
+    return qap_instance_evaluation<FieldT>(domain,
+                                           cs.num_variables(),
+                                           domain->m,
+                                           cs.num_inputs(),
+                                           t,
+                                           std::move(At),
+                                           std::move(Bt),
+                                           std::move(Ct),
+                                           std::move(Ht),
+                                           Zt);
+}
+
+
+
+
 /**
  * Witness map for the R1CS-to-QAP reduction.
  *

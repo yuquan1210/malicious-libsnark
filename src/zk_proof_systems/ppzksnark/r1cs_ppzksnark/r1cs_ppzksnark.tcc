@@ -19,6 +19,9 @@ See r1cs_ppzksnark.hpp .
 #include <functional>
 #include <iostream>
 #include <sstream>
+#include <fstream>
+using std::ofstream;
+using std::ifstream;
 
 #include "common/profiling.hpp"
 #include "common/utils.hpp"
@@ -635,10 +638,10 @@ bool r1cs_ppzksnark_online_verifier_weak_IC(const r1cs_ppzksnark_processed_verif
     G1_precomp<ppT> proof_g_K_precomp = ppT::precompute_G1(proof.g_K);
     G1_precomp<ppT> proof_g_A_g_acc_C_precomp = ppT::precompute_G1((proof.g_A.g + acc) + proof.g_C.g);
     Fqk<ppT> K_1 = ppT::miller_loop(proof_g_K_precomp, pvk.vk_gamma_g2_precomp);
-    Fqk<ppT> K_23 = ppT::double_miller_loop(proof_g_A_g_acc_C_precomp, pvk.vk_gamma_beta_g2_precomp, pvk.vk_gamma_beta_g1_precomp, proof_g_B_g_precomp);
+		Fqk<ppT> K_23 = ppT::double_miller_loop(proof_g_A_g_acc_C_precomp, pvk.vk_gamma_beta_g2_precomp, pvk.vk_gamma_beta_g1_precomp, proof_g_B_g_precomp);
     GT<ppT> K = ppT::final_exponentiation(K_1 * K_23.unitary_inverse());
     if (K != GT<ppT>::one())
-    {
+    {				
         if (!inhibit_profiling_info)
         {
             print_indent(); printf("Same-coefficient check failed.\n");
@@ -648,7 +651,7 @@ bool r1cs_ppzksnark_online_verifier_weak_IC(const r1cs_ppzksnark_processed_verif
     leave_block("Check same coefficients were used");
     leave_block("Online pairing computations");
     leave_block("Call to r1cs_ppzksnark_online_verifier_weak_IC");
-
+    
     return result;
 }
 
@@ -788,5 +791,220 @@ bool r1cs_ppzksnark_affine_verifier_weak_IC(const r1cs_ppzksnark_verification_ke
     return result;
 }
 
+template<typename ppT>
+r1cs_ppzksnark_keypair<ppT> malicious_r1cs_ppzksnark_generator(const r1cs_ppzksnark_constraint_system<ppT> &cs)
+{
+    enter_block("Call to malicious_r1cs_ppzksnark_generator");
+
+    /* make the B_query "lighter" if possible */
+    r1cs_ppzksnark_constraint_system<ppT> cs_copy(cs);
+    cs_copy.swap_AB_if_beneficial();
+
+    /* draw random element at which the QAP is evaluated */
+    const  Fr<ppT> t = Fr<ppT>::random_element();
+
+    qap_instance_evaluation<Fr<ppT> > qap_inst = malicious_r1cs_to_qap_instance_map_with_evaluation(cs_copy, t);
+
+    print_indent(); printf("* QAP number of variables: %zu\n", qap_inst.num_variables());
+    print_indent(); printf("* QAP pre degree: %zu\n", cs_copy.constraints.size());
+    print_indent(); printf("* QAP degree: %zu\n", qap_inst.degree());
+    print_indent(); printf("* QAP number of input variables: %zu\n", qap_inst.num_inputs());
+
+    enter_block("Compute query densities");
+    size_t non_zero_At = 0, non_zero_Bt = 0, non_zero_Ct = 0, non_zero_Ht = 0;
+    for (size_t i = 0; i < qap_inst.num_variables()+1; ++i)
+    {
+        if (!qap_inst.At[i].is_zero())
+        {
+            ++non_zero_At;
+        }
+        if (!qap_inst.Bt[i].is_zero())
+        {
+            ++non_zero_Bt;
+        }
+        if (!qap_inst.Ct[i].is_zero())
+        {
+            ++non_zero_Ct;
+        }
+    }
+    for (size_t i = 0; i < qap_inst.degree()+1; ++i)
+    {
+        if (!qap_inst.Ht[i].is_zero())
+        {
+            ++non_zero_Ht;
+        }
+    }
+    leave_block("Compute query densities");
+
+    Fr_vector<ppT> At = std::move(qap_inst.At); // qap_inst.At is now in unspecified state, but we do not use it later
+    Fr_vector<ppT> Bt = std::move(qap_inst.Bt); // qap_inst.Bt is now in unspecified state, but we do not use it later
+    Fr_vector<ppT> Ct = std::move(qap_inst.Ct); // qap_inst.Ct is now in unspecified state, but we do not use it later
+    Fr_vector<ppT> Ht = std::move(qap_inst.Ht); // qap_inst.Ht is now in unspecified state, but we do not use it later
+
+    /* append Zt to At,Bt,Ct with */
+    //At.emplace_back(qap_inst.Zt);
+    //Bt.emplace_back(qap_inst.Zt); // Matteo: Attempt to have B_query having only one value
+    //Ct.emplace_back(qap_inst.Zt);
+
+    const  Fr<ppT> alphaA = Fr<ppT>::random_element(),
+        alphaB = Fr<ppT>::random_element(),
+        alphaC = Fr<ppT>::random_element(),
+        rA = Fr<ppT>::random_element(),
+        rB = Fr<ppT>::random_element(),
+        beta = Fr<ppT>::random_element(),
+        gamma = Fr<ppT>::random_element();
+    const Fr<ppT>      rC = rA * rB;
+
+    // consrtuct the same-coefficient-check query (must happen before zeroing out the prefix of At)
+    Fr_vector<ppT> Kt;
+    Kt.reserve(qap_inst.num_variables()+4);
+    
+    // everything to zero except the "attacked_wire"
+		for (size_t i = 0; i < qap_inst.num_variables()+1; ++i)
+    {
+			if (i != attacked_wire()+1) {
+        Kt.emplace_back( Fr<ppT>::zero());
+       } else {
+				Kt.emplace_back( beta * rB );
+			 }
+    }
+    Kt.emplace_back(Fr<ppT>::zero()); 
+    Kt.emplace_back(Fr<ppT>::zero());
+    Kt.emplace_back(Fr<ppT>::zero()); 
+
+    /* zero out prefix of At and stick it into IC coefficients */
+    Fr_vector<ppT> IC_coefficients;
+    IC_coefficients.reserve(qap_inst.num_inputs() + 1);
+    for (size_t i = 0; i < qap_inst.num_inputs() + 1; ++i)
+    {
+        IC_coefficients.emplace_back(At[i]);
+        //assert(!IC_coefficients[i].is_zero());
+        At[i] = Fr<ppT>::zero();
+    }
+
+    const size_t g1_exp_count = 2*(non_zero_At - qap_inst.num_inputs() + non_zero_Ct) + non_zero_Bt + non_zero_Ht + Kt.size();
+    const size_t g2_exp_count = non_zero_Bt;
+
+    size_t g1_window = get_exp_window_size<G1<ppT> >(g1_exp_count);
+    size_t g2_window = get_exp_window_size<G2<ppT> >(g2_exp_count);
+    print_indent(); printf("* G1 window: %zu\n", g1_window);
+    print_indent(); printf("* G2 window: %zu\n", g2_window);
+
+#ifdef MULTICORE
+    const size_t chunks = omp_get_max_threads(); // to override, set OMP_NUM_THREADS env var or call omp_set_num_threads()
+#else
+    const size_t chunks = 1;
+#endif
+
+    enter_block("Generating G1 multiexp table");
+    window_table<G1<ppT> > g1_table = get_window_table(Fr<ppT>::size_in_bits(), g1_window, G1<ppT>::one());
+    leave_block("Generating G1 multiexp table");
+
+    enter_block("Generating G2 multiexp table");
+    window_table<G2<ppT> > g2_table = get_window_table(Fr<ppT>::size_in_bits(), g2_window, G2<ppT>::one());
+    leave_block("Generating G2 multiexp table");
+
+    enter_block("Generate R1CS proving key");
+
+    enter_block("Generate knowledge commitments");
+    enter_block("Compute the A-query", false);
+    knowledge_commitment_vector<G1<ppT>, G1<ppT> > A_query = kc_batch_exp(Fr<ppT>::size_in_bits(), g1_window, g1_window, g1_table, g1_table, rA, rA*alphaA, At, chunks);
+    leave_block("Compute the A-query", false);
+
+    enter_block("Compute the B-query", false);
+    knowledge_commitment_vector<G2<ppT>, G1<ppT> > B_query = kc_batch_exp(Fr<ppT>::size_in_bits(), g2_window, g1_window, g2_table, g1_table, rB, rB*alphaB, Bt, chunks);
+    leave_block("Compute the B-query", false);
+
+    enter_block("Compute the C-query", false);
+    knowledge_commitment_vector<G1<ppT>, G1<ppT> > C_query = kc_batch_exp(Fr<ppT>::size_in_bits(), g1_window, g1_window, g1_table, g1_table, rC, rC*alphaC, Ct, chunks);
+    leave_block("Compute the C-query", false);
+
+    enter_block("Compute the H-query", false);
+    G1_vector<ppT> H_query = batch_exp(Fr<ppT>::size_in_bits(), g1_window, g1_table, Ht);
+    leave_block("Compute the H-query", false);
+
+    enter_block("Compute the K-query", false);
+    G1_vector<ppT> K_query = batch_exp(Fr<ppT>::size_in_bits(), g1_window, g1_table, Kt);
+#ifdef USE_MIXED_ADDITION
+    batch_to_special<G1<ppT> >(K_query);
+#endif
+    leave_block("Compute the K-query", false);
+
+    leave_block("Generate knowledge commitments");
+
+    leave_block("Generate R1CS proving key");
+
+    enter_block("Generate R1CS verification key");
+    G2<ppT> alphaA_g2 = alphaA * G2<ppT>::one();
+    G1<ppT> alphaB_g1 = alphaB * G1<ppT>::one();
+    G2<ppT> alphaC_g2 = alphaC * G2<ppT>::one();
+    G2<ppT> gamma_g2 = gamma * G2<ppT>::one();
+    G1<ppT> gamma_beta_g1 = (gamma * beta) * G1<ppT>::one();
+    G2<ppT> gamma_beta_g2 = (gamma * beta) * G2<ppT>::one();
+    G2<ppT> rC_Z_g2 = (rC * qap_inst.Zt) * G2<ppT>::one();
+
+    enter_block("Encode IC query for R1CS verification key");
+    G1<ppT> encoded_IC_base = (rA * IC_coefficients[0]) * G1<ppT>::one();
+    Fr_vector<ppT> multiplied_IC_coefficients;
+    multiplied_IC_coefficients.reserve(qap_inst.num_inputs());
+    for (size_t i = 1; i < qap_inst.num_inputs() + 1; ++i)
+    {
+        multiplied_IC_coefficients.emplace_back(rA * IC_coefficients[i]);
+    }
+    G1_vector<ppT> encoded_IC_values = batch_exp(Fr<ppT>::size_in_bits(), g1_window, g1_table, multiplied_IC_coefficients);
+
+    leave_block("Encode IC query for R1CS verification key");
+    leave_block("Generate R1CS verification key");
+
+    leave_block("Call to malicious_r1cs_ppzksnark_generator");
+
+    accumulation_vector<G1<ppT> > encoded_IC_query(std::move(encoded_IC_base), std::move(encoded_IC_values));
+
+    r1cs_ppzksnark_verification_key<ppT> vk = r1cs_ppzksnark_verification_key<ppT>(alphaA_g2,
+                                                                                   alphaB_g1,
+                                                                                   alphaC_g2,
+                                                                                   gamma_g2,
+                                                                                   gamma_beta_g1,
+                                                                                   gamma_beta_g2,
+                                                                                   rC_Z_g2,
+                                                                                   encoded_IC_query);
+    r1cs_ppzksnark_proving_key<ppT> pk = r1cs_ppzksnark_proving_key<ppT>(std::move(A_query),
+                                                                         std::move(B_query),
+                                                                         std::move(C_query),
+                                                                         std::move(H_query),
+                                                                         std::move(K_query),
+                                                                         std::move(cs_copy));
+
+    pk.print_size();
+    vk.print_size();
+    
+    // Save rhoB to file for malicious V to retrieve it later
+    ofstream rhoB_file("rhoB");
+    rhoB_file << rB;
+    rhoB_file.close();
+
+    return r1cs_ppzksnark_keypair<ppT>(std::move(pk), std::move(vk));
+}
+
+
+template<typename ppT>
+bool malicious_r1cs_ppzksnark_verifier(const r1cs_ppzksnark_verification_key<ppT> &vk,
+                             const r1cs_ppzksnark_primary_input<ppT> &primary_input,
+                             const r1cs_ppzksnark_proof<ppT> &proof)
+{
+    
+		// Load rhoB from file
+    ifstream rhoB_file("rhoB");
+    Fr<ppT> rB;
+    rhoB_file >> rB;
+    rhoB_file.close();
+    
+    // Checking that Pi_b == P2*rB
+    // If one, the wire attacked_wire() is one
+    return (rB*G2<ppT>::one() == proof.g_B.g);
+
+}
+
 } // libsnark
+
 #endif // R1CS_PPZKSNARK_TCC_

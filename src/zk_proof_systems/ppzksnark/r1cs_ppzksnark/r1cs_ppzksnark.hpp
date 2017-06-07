@@ -463,6 +463,28 @@ bool r1cs_ppzksnark_affine_verifier_weak_IC(const r1cs_ppzksnark_verification_ke
                                             const r1cs_ppzksnark_proof<ppT> &proof);
 
 
+                               
+/***************************** Attack algorithms *******************************/
+
+/**
+ * A malicious generator algorithm for the R1CS ppzkSNARK.
+ *
+ * Given a R1CS constraint system CS, this algorithm produces a malicious proving and verification keys for CS.
+ */
+template<typename ppT>
+r1cs_ppzksnark_keypair<ppT> malicious_r1cs_ppzksnark_generator(const r1cs_ppzksnark_constraint_system<ppT> &cs);
+
+/**
+ * A malicious verifier algorithm for the R1CS ppzkSNARK.
+ *
+ * Finds out whether wire attacked_wire() is one.
+ */
+template<typename ppT>
+bool malicious_r1cs_ppzksnark_verifier(const r1cs_ppzksnark_verification_key<ppT> &vk,
+                             const r1cs_ppzksnark_primary_input<ppT> &primary_input,
+                             const r1cs_ppzksnark_proof<ppT> &proof);
+
+
 } // libsnark
 
 #include "zk_proof_systems/ppzksnark/r1cs_ppzksnark/r1cs_ppzksnark.tcc"

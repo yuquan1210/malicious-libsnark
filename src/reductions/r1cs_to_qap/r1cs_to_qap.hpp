@@ -35,7 +35,17 @@
 #include "relations/arithmetic_programs/qap/qap.hpp"
 #include "relations/constraint_satisfaction_problems/r1cs/r1cs.hpp"
 
+#include <fstream>
+using std::ifstream;
+
 namespace libsnark {
+	
+unsigned attacked_wire() {
+	ifstream wire_file("attacked_wire");
+	unsigned wire;
+	wire_file >>  wire;
+	return wire;
+}
 
 /**
  * Instance map for the R1CS-to-QAP reduction.
@@ -49,6 +59,10 @@ qap_instance<FieldT> r1cs_to_qap_instance_map(const r1cs_constraint_system<Field
 template<typename FieldT>
 qap_instance_evaluation<FieldT> r1cs_to_qap_instance_map_with_evaluation(const r1cs_constraint_system<FieldT> &cs,
                                                                          const FieldT &t);
+                                                                         
+template<typename FieldT>
+qap_instance_evaluation<FieldT> malicious_r1cs_to_qap_instance_map_with_evaluation(const r1cs_constraint_system<FieldT> &cs,
+																																									 const FieldT &t);
 
 /**
  * Witness map for the R1CS-to-QAP reduction.

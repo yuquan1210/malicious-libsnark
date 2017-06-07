@@ -29,7 +29,6 @@ INSTALL_LIBS = $(LIB_FILE)
 # Sentinel file to check existence of this directory (since directories don't work as a Make dependency):
 DEPINST_EXISTS = $(DEPINST)/.exists
 
-
 COMPILE_GTEST :=
 ifneq ($(NO_GTEST),1)
 	GTESTDIR=/usr/src/gtest
