@@ -17,6 +17,8 @@
 #include "common/profiling.hpp"
 #include "common/utils.hpp"
 
+#include <functional>
+
 namespace libsnark {
 
 /* the code here is full of template lambda magic, but it is better to
