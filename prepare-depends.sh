@@ -12,8 +12,8 @@ mkdir -p $DEPSRC
 
 # ate-pairing library, and its dependency, xbyak (needed for BN128 curve)
 cd $DEPSRC
-[ ! -d xbyak ] && git clone git://github.com/herumi/xbyak.git
-[ ! -d ate-pairing ] && git clone git://github.com/herumi/ate-pairing.git
+[ ! -d xbyak ] && git clone https://github.com/herumi/xbyak.git
+[ ! -d ate-pairing ] && git clone https://github.com/herumi/ate-pairing.git
 cd ate-pairing
 make -j SUPPORT_SNARK=1
 cd ../..
@@ -22,7 +22,7 @@ cp -rv $DEPSRC/ate-pairing/lib $DEPINST/
 
 # SUPERCOP library (optimized crypto implementations, used by ADSNARK)
 cd $DEPSRC
-[ ! -d libsnark-supercop ] && git clone git://github.com/mbbarbosa/libsnark-supercop.git
+[ ! -d libsnark-supercop ] && git clone https://github.com/mbbarbosa/libsnark-supercop.git
 cd libsnark-supercop
 sh "do"
 cd ../..
